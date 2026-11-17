@@ -30,6 +30,22 @@ make release   # the app (build/app/PPSA99360), dist/PS5-ECAM-vVERSION.zip with 
 make check     # the same build with a stand-in for RADV: checks everything else, not an app
 ```
 
+**Choosing the emulators.** `CORES` names the emulators a build takes, comma or space separated; it
+works with `make release`, `make package`, `make build` and `make check`:
+
+```bash
+make release                             # CORES=all: every emulator a release has
+make release CORES=none                  # the launcher alone, with the Wii U (Cemu is the app's own program)
+make release CORES=eden,azahar,mgba      # those only
+make release CORES=all,optional          # and Mupen64Plus, FCEUmm and ES-DE, which a release leaves out
+```
+
+The names are `azahar`, `melonds`, `eden`, `eglantine`, `porpoise` and the libretro cores `mesen`,
+`mesens`, `mgba`, `paralleln64`, `beetlevb`, `pokemini` and `gw`; `libretro` is all seven. `optional` is
+`mupen64plus`, `fceumm` and `esde` (ES-DE in the app's folder, as `PS5CEMU_WITH_ESDE=1`), which can be named
+on their own too. An emulator left out is not linked or packaged even when an earlier build left it in
+`build/`, and its sides say it is not in this copy.
+
 **The version** is set in one place, `VERSION` in the `Makefile`. The launcher and the boot log
 show it (`port/CMakeLists.txt` reads it), and `tools/package.sh` writes it into the app's
 `param.json`: `3.0.0` is `contentVersion` `03.000.000` and `masterVersion` `03.00` (`2.0.0d` was
