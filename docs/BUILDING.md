@@ -52,8 +52,9 @@ console (`PLAYTENDOH_DEBUG` in `port/CMakeLists.txt`), and names its ZIP and ELF
 `port/devloop/grab.h` sits where a program shows its frames (`vkQueuePresentKHR`), so a grab is what the
 screen shows, with in-game menus and loading screens over the game: every few frames the program tries to
 remove `devloop-shot` in its own folder, and when that works the next frame goes into `devloop-shots` there,
-which DevLoop sends on and deletes. The launcher (`port/ui/gfx.cpp`) and the screens the DS and every
-libretro core share (`port/melonds/screens.cpp`) have it. DevLoop's `titles.json` names the app:
+which DevLoop sends on and deletes. The launcher (`port/ui/gfx.cpp`), the screens the DS and every
+libretro core share (`port/melonds/screens.cpp`), Cemu (`port/cemu/DevLoopPS5.h`, `patches/cemu`) and Azahar
+(`patches/azahar`) have it. DevLoop's `titles.json` names the app:
 
 ```json
 "playtendoh": {
@@ -63,8 +64,8 @@ libretro core share (`port/melonds/screens.cpp`) have it. DevLoop's `titles.json
 }
 ```
 
-The emulators that show their frames themselves (Cemu, Azahar, and the programs of their own: Eden,
-EglantinePS5, Porpoise X) take the same file at their own present; until each does, theirs is `shot`.
+The programs of their own (Eden, EglantinePS5, Porpoise X) take the same file at their own present; until
+each does, theirs is `shot`.
 
 **The version** is set in one place, `VERSION` in the `Makefile`. The launcher and the boot log
 show it (`port/CMakeLists.txt` reads it), and `tools/package.sh` writes it into the app's
