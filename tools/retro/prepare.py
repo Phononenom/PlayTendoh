@@ -57,6 +57,11 @@ def prepare(source, kind, project):
             # Bundled runtimes are updated with ECAM only, never through a standalone installer.
             update = source / 'ps5/frontend/fe_update.cpp'
             replace(update, 'UpdateOffer CheckForUpdate()\n{', 'UpdateOffer CheckForUpdate()\n{\n    return {}; // ECAM bundle: standalone self-updater disabled.\n')
+            # RADV's dladdr brings in the SDK libc's dlfcn wrappers, whose optional hooks nothing on the
+            # console provides: as null they stay out of the imports, as tools/link.sh links the app.
+            replace(source / 'ps5/Makefile', '\t\t--as-needed $(APP_STUBS) -L $(SDK_LIB) \\\n',
+                    '\t\t--defsym=__dlopen=0 --defsym=__dlsym=0 --defsym=__dladdr=0 --defsym=__dlclose=0 --defsym=__dlerror=0 \\\n'
+                    '\t\t--as-needed $(APP_STUBS) -L $(SDK_LIB) \\\n')
         else:
             replace(main, 'const bool from_command_line = argc > 1 && argv[1] && OrbisIsFile(argv[1]);',
                     'const bool from_command_line = (ecam_bridge::request.valid && !ecam_bridge::request.library) || (argc > 1 && argv[1] && OrbisIsFile(argv[1]));')
