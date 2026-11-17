@@ -134,13 +134,17 @@ gameboy: ## Build source-pinned GB/GBC and GBA runtimes (prepared PS5 dependenci
 retro-upgrades: ## Build optional N64/NES alternative runtimes (prepared toolchains required)
 	python3 tools/build-retro.py mupen64plus fceumm
 
-# One of them for a package (CORES=mupen64plus, or optional): a runtime staged at its pin is kept, as
-# tools/build-porpoise.sh keeps Porpoise; at another pin it is built again
+# One of them for a package (CORES=mupen64plus, or optional): a runtime staged at its pin, in the same mode
+# (DEBUG=1 or not: its .debug beside it), is kept, as tools/build-porpoise.sh keeps Porpoise; otherwise it is
+# built again, its objects too (make would not see the define change)
 mupen64plus fceumm: deps
 	@pin=$$(python3 -c 'import json,sys; print(next(s["commit"] for s in json.load(open("tools/retro/sources.json"))["sources"] if s["name"] == sys.argv[1]))' $@); \
 	staged=$$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("commit", ""))' build/retro/$@/ECAM-SOURCE.json 2>/dev/null || true); \
-	if [[ $$staged == "$$pin" ]]; then echo "==> [$@] build/retro/$@ is at $${pin:0:12}"; \
-	else rm -rf build/retro/$@ && python3 tools/build-retro.py --reuse-prepared $@; fi
+	mode=$${PLAYTENDOH_DEBUG:-OFF}; \
+	if [[ $$staged == "$$pin" && $$(cat build/retro/$@.debug 2>/dev/null || echo OFF) == "$$mode" ]]; then \
+		echo "==> [$@] build/retro/$@ is at $${pin:0:12}"; \
+	else rm -rf build/retro/$@ build/retro/$@.debug build/retro-source/$@/ps5/build && \
+		python3 tools/build-retro.py --reuse-prepared $@ && echo "$$mode" >build/retro/$@.debug; fi
 
 retro: ## Build the pinned Porpoise, N64 and NES runtimes (prepared donor toolchains required)
 	python3 tools/build-retro.py porpoise n64 nes

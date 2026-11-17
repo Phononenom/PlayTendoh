@@ -66,7 +66,11 @@ Vulkan's present) have it. A program that shows its frames otherwise than throug
 }
 ```
 
-Porpoise X takes the same file at its own present; until it does, the GameCube's and the Wii's is `shot`.
+Porpoise X answers it at its one present, where it draws its in-game menu over the game in the same pass:
+`tools/retro/prepare.py` puts it there, with this checkout's `grab.h`, and gives Porpoise's build `PLAYTENDOH_DEBUG`
+in a debug build. A staged Porpoise is kept only for the same mode (debug or not).
+Mupen64Plus and FCEUmm (`CORES=optional`) answer it from the picture their frontends draw, as it is presented
+(`tools/retro/prepare.py`); each of these is kept staged only for the same mode too.
 
 **The version** is set in one place, `VERSION` in the `Makefile`. The launcher and the boot log
 show it (`port/CMakeLists.txt` reads it), and `tools/package.sh` writes it into the app's
