@@ -21,12 +21,17 @@
 //
 // It loads the Vulkan functions it calls through the vkGetDeviceProcAddr it is given, so it needs nothing
 // of the program's own loader, and writes its PNGs itself (stored, uncompressed), so it needs no library.
+// A program that shows its frames otherwise (OpenGL: Eden's) defines DEVLOOP_NO_VULKAN and calls Asked
+// before each frame it shows and, when it says so, SaveRgba with the frame read back.
 
 #pragma once
 
+#ifndef DEVLOOP_NO_VULKAN
 #include <vulkan/vulkan.h>
+#endif
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -39,6 +44,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifndef DEVLOOP_NO_VULKAN
 // the device functions a grab calls, loaded by Grab::Init
 #define DEVLOOP_FUNCTIONS(X)                                                                                           \
 	X(vkCreateCommandPool) X(vkDestroyCommandPool) X(vkAllocateCommandBuffers) X(vkResetCommandBuffer)                 \
@@ -47,13 +53,17 @@
 	X(vkBindBufferMemory) X(vkMapMemory) X(vkInvalidateMappedMemoryRanges) X(vkCreateSemaphore) X(vkDestroySemaphore)   \
 	X(vkCreateFence) X(vkDestroyFence) X(vkWaitForFences) X(vkResetFences) X(vkQueueSubmit)
 
+#endif
+
 namespace devloop
 {
+#ifndef DEVLOOP_NO_VULKAN
 	// The swapchain's usage, with the copy a grab needs where the surface allows it
 	inline VkImageUsageFlags SwapchainUsage(VkImageUsageFlags usage, VkImageUsageFlags supported)
 	{
 		return (supported & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) ? usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT : usage;
 	}
+#endif
 
 	namespace detail
 	{
@@ -138,10 +148,80 @@ namespace devloop
 		return std::fclose(file) == 0 && written;
 	}
 
+	using Log = std::function<void(const std::string&)>;
+
+	// Whether the payload asked for a frame: devloop-shot removed from folder, tried every fourth call
+	// (calls: the caller's own count). Any renderer's, before it shows a frame.
+	inline bool Asked(const std::string& folder, uint64_t& calls)
+	{
+		return ++calls % 4 == 0 && unlink((folder + "/devloop-shot").c_str()) == 0;
+	}
+
+	namespace detail
+	{
+		// rgb written as devloop-shots/frame-N.png in folder, on a thread of its own: under another name
+		// first, then moved in whole, so the payload never takes half a picture
+		inline void WriteAsync(const std::string& folder, std::vector<uint8_t> rgb, uint32_t width, uint32_t height, const Log& log)
+		{
+			static std::atomic<int> taken{0};
+			const std::string shots = folder + "/devloop-shots";
+			const std::string writing = folder + "/devloop-shot-writing.png";
+			const std::string picture = shots + "/frame-" + std::to_string(++taken) + ".png";
+			std::thread([rgb = std::move(rgb), width, height, shots, writing, picture, log] {
+				mkdir(shots.c_str(), 0777);
+				chmod(shots.c_str(), 0777);
+				bool done = WritePng(writing, rgb, width, height);
+				done = done && chmod(writing.c_str(), 0666) == 0 && std::rename(writing.c_str(), picture.c_str()) == 0;
+				if (log)
+					log(done ? "[devloop] " + picture : "[devloop] " + picture + " could not be written: " + std::strerror(errno));
+			}).detach();
+		}
+
+		// a frame as 8-bit RGB, rows top to bottom, halved above 1920 wide (pixel: a pixel's RGB from x, y)
+		template <typename Pixel>
+		std::vector<uint8_t> Rgb(uint32_t& width, uint32_t& height, Pixel pixel)
+		{
+			const uint32_t step = width > 1920 ? 2 : 1;
+			const uint32_t outWidth = width / step, outHeight = height / step;
+			std::vector<uint8_t> rgb(size_t(outWidth) * outHeight * 3);
+			for (uint32_t y = 0; y < outHeight; y++)
+				for (uint32_t x = 0; x < outWidth; x++)
+				{
+					uint32_t sum[3] = {};
+					for (uint32_t dy = 0; dy < step; dy++)
+						for (uint32_t dx = 0; dx < step; dx++)
+						{
+							uint32_t c[3];
+							pixel(x * step + dx, y * step + dy, c);
+							for (int i = 0; i < 3; i++)
+								sum[i] += c[i];
+						}
+					for (int i = 0; i < 3; i++)
+						rgb[(size_t(y) * outWidth + x) * 3 + i] = uint8_t(sum[i] / (step * step));
+				}
+			width = outWidth;
+			height = outHeight;
+			return rgb;
+		}
+	}
+
+	// A frame read back as 8-bit RGBA (OpenGL's glReadPixels: bottomUp, rows from the bottom), written as
+	// the payload's picture. For a renderer that shows its frames otherwise than through Vulkan.
+	inline void SaveRgba(const std::string& folder, const uint8_t* rgba, uint32_t width, uint32_t height, bool bottomUp, const Log& log)
+	{
+		const uint32_t fullHeight = height;
+		const uint32_t pitch = width;
+		std::vector<uint8_t> rgb = detail::Rgb(width, height, [&](uint32_t x, uint32_t y, uint32_t c[3]) {
+			const uint8_t* p = rgba + (size_t(bottomUp ? fullHeight - 1 - y : y) * pitch + x) * 4;
+			c[0] = p[0], c[1] = p[1], c[2] = p[2];
+		});
+		detail::WriteAsync(folder, std::move(rgb), width, height, log);
+	}
+
+#ifndef DEVLOOP_NO_VULKAN
 	class Grab
 	{
 	public:
-		using Log = std::function<void(const std::string&)>;
 
 		Grab() = default;
 		Grab(const Grab&) = delete;
@@ -324,9 +404,9 @@ namespace devloop
 		// this present, if the payload asked for it: the request file removed (every fourth present)
 		bool Asked(const VkPresentInfoKHR& info)
 		{
-			if (!m_ready || info.swapchainCount != 1 || info.pSwapchains[0] != m_swapchain || ++m_presents % 4 != 0)
+			if (!m_ready || info.swapchainCount != 1 || info.pSwapchains[0] != m_swapchain)
 				return false;
-			return unlink((m_folder + "/devloop-shot").c_str()) == 0;
+			return devloop::Asked(m_folder, m_presents);
 		}
 
 		// the buffer the frame is copied into, made the first time and when the frame grows
@@ -369,41 +449,16 @@ namespace devloop
 			return true;
 		}
 
-		// the copied frame as 8-bit RGB (halved above 1920 wide), written apart from the program
+		// the copied frame as 8-bit RGB, written apart from the program
 		void Save(const uint8_t* pixels)
 		{
-			const uint32_t step = m_extent.width > 1920 ? 2 : 1;
-			const uint32_t width = m_extent.width / step, height = m_extent.height / step;
 			const VkFormat format = m_format;
 			const uint32_t pitch = m_extent.width;
-			std::vector<uint8_t> rgb(size_t(width) * height * 3);
-			for (uint32_t y = 0; y < height; y++)
-				for (uint32_t x = 0; x < width; x++)
-				{
-					uint32_t sum[3] = {};
-					for (uint32_t dy = 0; dy < step; dy++)
-						for (uint32_t dx = 0; dx < step; dx++)
-						{
-							uint32_t c[3];
-							Pixel(format, pixels + (size_t(y * step + dy) * pitch + x * step + dx) * 4, c);
-							for (int i = 0; i < 3; i++)
-								sum[i] += c[i];
-						}
-					for (int i = 0; i < 3; i++)
-						rgb[(size_t(y) * width + x) * 3 + i] = uint8_t(sum[i] / (step * step));
-				}
-			const std::string folder = m_folder + "/devloop-shots";
-			const std::string writing = m_folder + "/devloop-shot-writing.png";
-			const std::string picture = folder + "/frame-" + std::to_string(++m_taken) + ".png";
-			Log log = m_log;
-			std::thread([rgb = std::move(rgb), width, height, folder, writing, picture, log] {
-				mkdir(folder.c_str(), 0777);
-				chmod(folder.c_str(), 0777);
-				bool done = WritePng(writing, rgb, width, height);
-				done = done && chmod(writing.c_str(), 0666) == 0 && std::rename(writing.c_str(), picture.c_str()) == 0;
-				if (log)
-					log(done ? "[devloop] " + picture : "[devloop] " + picture + " could not be written: " + std::strerror(errno));
-			}).detach();
+			uint32_t width = m_extent.width, height = m_extent.height;
+			std::vector<uint8_t> rgb = detail::Rgb(width, height, [&](uint32_t x, uint32_t y, uint32_t c[3]) {
+				Pixel(format, pixels + (size_t(y) * pitch + x) * 4, c);
+			});
+			detail::WriteAsync(m_folder, std::move(rgb), width, height, m_log);
 		}
 
 		static void Pixel(VkFormat format, const uint8_t* p, uint32_t c[3])
@@ -459,7 +514,7 @@ namespace devloop
 		VkExtent2D m_extent{};
 		bool m_copyable = false;
 		uint64_t m_presents = 0;
-		int m_taken = 0;
 	};
+#endif
 }
 #undef DEVLOOP_FUNCTIONS

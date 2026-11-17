@@ -53,8 +53,10 @@ console (`PLAYTENDOH_DEBUG` in `port/CMakeLists.txt`), and names its ZIP and ELF
 screen shows, with in-game menus and loading screens over the game: every few frames the program tries to
 remove `devloop-shot` in its own folder, and when that works the next frame goes into `devloop-shots` there,
 which DevLoop sends on and deletes. The launcher (`port/ui/gfx.cpp`), the screens the DS and every
-libretro core share (`port/melonds/screens.cpp`), Cemu (`port/cemu/DevLoopPS5.h`, `patches/cemu`) and Azahar
-(`patches/azahar`) have it. DevLoop's `titles.json` names the app:
+libretro core share (`port/melonds/screens.cpp`), Cemu (`port/cemu/DevLoopPS5.h`, `patches/cemu`), Azahar
+(`patches/azahar`), and Eden and EglantinePS5 (`patches/eden`, `patches/eglantine`: at OpenGL's swap and at
+Vulkan's present) have it. A program that shows its frames otherwise than through Vulkan calls
+`devloop::Asked` before each frame and `devloop::SaveRgba` with it read back. DevLoop's `titles.json` names the app:
 
 ```json
 "playtendoh": {
@@ -64,8 +66,7 @@ libretro core share (`port/melonds/screens.cpp`), Cemu (`port/cemu/DevLoopPS5.h`
 }
 ```
 
-The programs of their own (Eden, EglantinePS5, Porpoise X) take the same file at their own present; until
-each does, theirs is `shot`.
+Porpoise X takes the same file at its own present; until it does, the GameCube's and the Wii's is `shot`.
 
 **The version** is set in one place, `VERSION` in the `Makefile`. The launcher and the boot log
 show it (`port/CMakeLists.txt` reads it), and `tools/package.sh` writes it into the app's
