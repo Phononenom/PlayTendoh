@@ -32,6 +32,12 @@ $(if $(cores_unknown),$(error CORES: no emulator named $(cores_unknown); the nam
 export PS5CEMU_CORES := $(CORES_LIST)
 core = $(filter $(1),$(CORES_LIST))
 
+# A debug build (make release DEBUG=1): what helps develop and test the app on a console, kept out of a
+# release (port/CMakeLists.txt's PLAYTENDOH_DEBUG). Its ZIP and ELF are named -debug.
+DEBUG ?= 0
+export PLAYTENDOH_DEBUG := $(if $(filter 1 on ON yes,$(DEBUG)),ON,OFF)
+DIST_NAME := v$(VERSION)$(if $(filter ON,$(PLAYTENDOH_DEBUG)),-debug)
+
 .PHONY: mupen64plus fceumm gameboy retro-upgrades retro test-retro help deps deps-status radv azahar melonds libretro eden eglantine porpoise build check package release clean distclean test-contribution esde esde-zip
 
 test-retro: ## Host verification for the additional system integration
@@ -68,6 +74,7 @@ help: ## List the targets
 	@echo '                              the emulators a build takes: all, none (the launcher and the Wii U),'
 	@echo '                              libretro, optional, or names: $(CORES_ALL)'
 	@echo '                              $(CORES_OPTIONAL) (CORES=eden,mgba; CORES=all,optional)'
+	@echo '  DEBUG=$(DEBUG)                     1: a debug build (PS5_DevLoop'"'"'s grab of the launcher'"'"'s frame), dist/*-debug'
 
 deps: ## Fetch the pinned inputs and build the libraries Cemu needs for the PS5
 	python3 -B tools/deps.py fetch
@@ -146,16 +153,16 @@ package: build $(call core,eden eglantine porpoise mupen64plus fceumm esde) ## T
 release: export PS5CEMU_RELEASE := 1
 release: package ## dist/PS5-ECAM-vVERSION.zip (the PPSA99360 folder), SHA256SUMS, and the ELF with its symbols
 	@mkdir -p dist
-	rm -f dist/PS5-ECAM-v$(VERSION).zip
-	cd build/app && python3 -m zipfile -c ../../dist/PS5-ECAM-v$(VERSION).zip PPSA99360
-	cd dist && sha256sum PS5-ECAM-v$(VERSION).zip > SHA256SUMS
+	rm -f dist/PS5-ECAM-$(DIST_NAME).zip
+	cd build/app && python3 -m zipfile -c ../../dist/PS5-ECAM-$(DIST_NAME).zip PPSA99360
+	cd dist && sha256sum PS5-ECAM-$(DIST_NAME).zip > SHA256SUMS
 	@# the unstripped ELF of the eboot, kept to look up this release's crash reports
 	@# (tools/symbolize-crash.py dist/ps5cemu-vVERSION.elf boot.log)
-	cp build/cemu/ps5cemu.elf dist/ps5cemu-v$(VERSION).elf
+	cp build/cemu/ps5cemu.elf dist/ps5cemu-$(DIST_NAME).elf
 	@# and the Switch side's program's (ProsperoEdenX's tools/symbolize-crash.py)
-	if [[ -f build/eden/eden.elf ]]; then cp build/eden/eden.elf dist/eden-v$(VERSION).elf; fi
+	if [[ -f build/eden/eden.elf ]]; then cp build/eden/eden.elf dist/eden-$(DIST_NAME).elf; fi
 	@# and the Switch 2's games' program's (EglantinePS5's tools/symbolize-crash.py)
-	if [[ -f build/eglantine/eglantine.elf ]]; then cp build/eglantine/eglantine.elf dist/eglantine-v$(VERSION).elf; fi
+	if [[ -f build/eglantine/eglantine.elf ]]; then cp build/eglantine/eglantine.elf dist/eglantine-$(DIST_NAME).elf; fi
 	@cat dist/SHA256SUMS
 
 clean: ## Remove build outputs (build/, dist/); dependencies stay

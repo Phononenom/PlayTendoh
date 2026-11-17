@@ -46,6 +46,26 @@ The names are `azahar`, `melonds`, `eden`, `eglantine`, `porpoise` and the libre
 on their own too. An emulator left out is not linked or packaged even when an earlier build left it in
 `build/`, and its sides say it is not in this copy.
 
+**A debug build.** `make release DEBUG=1` builds the same app with what helps develop and test it on a
+console (`PLAYTENDOH_DEBUG` in `port/CMakeLists.txt`), and names its ZIP and ELFs `-debug`. Now that is
+[PS5_DevLoop](https://github.com/griches/PS5_DevLoop)'s `grab`: the frame shown, on request, as a PNG.
+`port/devloop/grab.h` sits where a program shows its frames (`vkQueuePresentKHR`), so a grab is what the
+screen shows, with in-game menus and loading screens over the game: every few frames the program tries to
+remove `devloop-shot` in its own folder, and when that works the next frame goes into `devloop-shots` there,
+which DevLoop sends on and deletes. The launcher (`port/ui/gfx.cpp`) and the screens the DS and every
+libretro core share (`port/melonds/screens.cpp`) have it. DevLoop's `titles.json` names the app:
+
+```json
+"playtendoh": {
+  "title_id": "PPSA99360",
+  "request": "/data/homebrew/PPSA99360/devloop-shot",
+  "folder": "/data/homebrew/PPSA99360/devloop-shots"
+}
+```
+
+The emulators that show their frames themselves (Cemu, Azahar, and the programs of their own: Eden,
+EglantinePS5, Porpoise X) take the same file at their own present; until each does, theirs is `shot`.
+
 **The version** is set in one place, `VERSION` in the `Makefile`. The launcher and the boot log
 show it (`port/CMakeLists.txt` reads it), and `tools/package.sh` writes it into the app's
 `param.json`: `3.0.0` is `contentVersion` `03.000.000` and `masterVersion` `03.00` (`2.0.0d` was
